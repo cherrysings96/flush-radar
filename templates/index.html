@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FlushRadar — Instant Restroom Finder</title>
+  <style>
+    :root {
+      --bg: #f6f7f5;
+      --surface: #ffffff;
+      --text: #1c2421;
+      --muted: #63706a;
+      --accent: #2c6e58;
+      --accent-hover: #215443;
+      --border: #e2e7e4;
+      --pill-bg: #eef2f0;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 18px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      z-index: 1000;
+    }
+    .brand { font-weight: 800; font-size: 1.2rem; color: var(--accent); letter-spacing: -0.02em; display: flex; align-items: center; gap: 6px; }
+    .search-wrap { position: relative; flex: 1; min-width: 220px; max-width: 440px; }
+    .search-wrap input {
+      width: 100%; padding: 9px 14px; border: 1px solid var(--border); border-radius: 10px;
+      font-size: 0.92rem; outline: none; background: var(--bg);
+    }
+    .search-wrap input:focus { border-color: var(--accent); background: #fff; }
+    #suggestions {
+      position: absolute; top: 42px; left: 0; right: 0; background: #fff; border: 1px solid var(--border);
+      border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); display: none; z-index: 2000; overflow: hidden;
+    }
+    .sugg-item { padding: 9px 14px; cursor: pointer; font-size: 0.88rem; border-bottom: 1px solid var(--border); }
+    .sugg-item:last-child { border-bottom: none; }
+    .sugg-item:hover { background: var(--pill-bg); }
+
+    .btn {
+      padding: 9px 14px; border-radius: 10px; border: none; cursor: pointer; font-weight: 600;
+      font-size: 0.86rem; transition: 0.15s;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-ghost { background: var(--pill-bg); color: var(--text); }
+    .btn-ghost:hover { background: #e1e8e4; }
+
+    .filters { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .chip {
+      padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface);
+      font-size: 0.8rem; cursor: pointer; color: var(--muted); font-weight: 600; user-select: none;
+    }
+    .chip.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    main { flex: 1; display: flex; min-height: 0; }
+    #sidebar {
+      width: 360px; background: var(--surface); border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .status-bar {
+      padding: 10px 16px; font-size: 0.8rem; color: var(--muted); border-bottom: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    #list { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; }
+    .card {
+      border: 1px solid var(--border); border-radius: 12px; padding: 12px; cursor: pointer;
+      transition: 0.15s; background: #fff;
+    }
+    .card:hover { border-color: var(--accent); transform: translateY(-1px); }
+    .card-top { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
+    .card-title { font-weight: 700; font-size: 0.94rem; }
+    .card-dist { font-size: 0.8rem; font-weight: 700; color: var(--accent); white-space: nowrap; }
+    .card-addr { font-size: 0.8rem; color: var(--muted); margin-top: 3px; }
+    .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+    .tag { font-size: 0.72rem; padding: 3px 8px; border-radius: 6px; background: var(--pill-bg); color: var(--text); font-weight: 600; }
+    .card-actions { display: flex; gap: 8px; margin-top: 10px; }
+    .card-actions a, .card-actions button {
+      font-size: 0.76rem; padding: 5px 10px; border-radius: 7px; text-decoration: none; font-weight: 600;
+      border: 1px solid var(--border); background: var(--bg); color: var(--text); cursor: pointer;
+    }
+    .card-actions a:hover, .card-actions button:hover { border-color: var(--accent); color: var(--accent); }
+
+    #map { flex: 1; height: 100%; }
+
+    /* Modal */
+    .modal-bg {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: none;
+      align-items: center; justify-content: center; z-index: 3000;
+    }
+    .modal {
+      background: #fff; padding: 20px; border-radius: 14px; width: 92%; max-width: 400px;
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    .modal h3 { font-size: 1.05rem; }
+    .modal input[type="text"] { width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; }
+    .modal label { display: flex; align-items: center; gap: 8px; font-size: 0.88rem; cursor: pointer; }
+    .modal-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+
+    @media (max-width: 768px) {
+      main { flex-direction: column-reverse; }
+      #sidebar { width: 100%; height: 45%; border-right: none; border-top: 1px solid var(--border); }
+      #map { height: 55%; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">⚡ FlushRadar</div>
+    <div class="search-wrap">
+      <input id="searchInput" type="text" placeholder="Search city, mall, or area..." autocomplete="off" />
+      <div id="suggestions"></div>
+    </div>
+    <button class="btn btn-primary" id="locateBtn">📍 Near Me</button>
+    <button class="btn btn-ghost" id="addBtn">+ Add Spot</button>
+    <div class="filters">
+      <span class="chip" data-filter="free">Free</span>
+      <span class="chip" data-filter="wheelchair">♿ Accessible</span>
+      <span class="chip" data-filter="changing">👶 Baby Change</span>
+      <span class="chip" data-filter="open24">🕒 24/7</span>
+    </div>
+  </header>
+
+  <main>
+    <aside id="sidebar">
+      <div class="status-bar">
+        <span id="statusText">Loading nearby restrooms...</span>
+        <span id="speedBadge"></span>
+      </div>
+      <div id="list"></div>
+    </aside>
+    <div id="map"></div>
+  </main>
+
+  <div class="modal-bg" id="addModal">
+    <div class="modal">
+      <h3>Add a Restroom (at Map Center)</h3>
+      <input type="text" id="newName" placeholder="Name (e.g., City Mall 2nd Floor)" />
+      <input type="text" id="newAddr" placeholder="Landmark / Address" />
+      <label><input type="checkbox" id="newFree" checked /> Free to use</label>
+      <label><input type="checkbox" id="newWheelchair" /> Wheelchair accessible</label>
+      <label><input type="checkbox" id="newChanging" /> Baby changing table</label>
+      <label><input type="checkbox" id="new24h" /> Open 24/7</label>
+      <div class="modal-btns">
+        <button class="btn btn-ghost" id="cancelModal">Cancel</button>
+        <button class="btn btn-primary" id="saveSpot">Save Spot</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const DEFAULT_LAT = 8.5241, DEFAULT_LON = 76.9366;
+    let currentLat = DEFAULT_LAT, currentLon = DEFAULT_LON;
+    let allSpots = [];
+    let activeFilters = { free: false, wheelchair: false, changing: false, open24: false };
+    let map;
+    let infoWindow;
+    let markers = [];
+
+    function initMap() {
+      map = new google.maps.Map(document.getElementById("map"), {
+        center: { lat: DEFAULT_LAT, lng: DEFAULT_LON },
+        zoom: 13,
+        mapTypeControl: false,
+        streetViewControl: false
+      });
+      infoWindow = new google.maps.InfoWindow();
+
+      // Reload when user pans map significantly
+      map.addListener("idle", () => {
+        const c = map.getCenter();
+        if (!c) return;
+        const lat = c.lat(), lng = c.lng();
+        if (Math.abs(lat - currentLat) > 0.015 || Math.abs(lng - currentLon) > 0.015) {
+          loadRestrooms(lat, lng);
+        }
+      });
+
+      loadRestrooms(DEFAULT_LAT, DEFAULT_LON);
+    }
+
+    async function loadRestrooms(lat, lon) {
+      currentLat = lat; currentLon = lon;
+      document.getElementById("statusText").textContent = "Scanning radar...";
+      try {
+        const res = await fetch(`/api/restrooms?lat=${lat}&lon=${lon}&radius=5000`);
+        const data = await res.json();
+        allSpots = data.restrooms || [];
+        document.getElementById("speedBadge").textContent = `${data.elapsed_ms} ms${data.cache_hit ? " ⚡" : ""}`;
+        renderFiltered();
+      } catch (e) {
+        document.getElementById("statusText").textContent = "Could not load spots. Try again.";
+      }
+    }
+
+    function renderFiltered() {
+      const filtered = allSpots.filter(s => {
+        if (activeFilters.free && !s.is_free) return false;
+        if (activeFilters.wheelchair && !s.wheelchair) return false;
+        if (activeFilters.changing && !s.changing_table) return false;
+        if (activeFilters.open24 && !s.open_24h) return false;
+        return true;
+      });
+
+      document.getElementById("statusText").textContent = `${filtered.length} restroom${filtered.length === 1 ? "" : "s"} found`;
+
+      markers.forEach(m => m.setMap(null));
+      markers = [];
+
+      const listEl = document.getElementById("list");
+      listEl.innerHTML = "";
+
+      if (filtered.length === 0) {
+        listEl.innerHTML = `<div style="padding:20px;text-align:center;color:#63706a;font-size:0.9rem;">No restrooms match these filters here. Try zooming out or adding one!</div>`;
+        return;
+      }
+
+      filtered.forEach(spot => {
+        const marker = new google.maps.Marker({
+          position: { lat: spot.lat, lng: spot.lon },
+          map: map,
+          title: spot.name
+        });
+
+        const popupHtml = `<div style="font-family:sans-serif;line-height:1.4;"><b>${spot.name}</b><br>${spot.address}<br>⭐ ${spot.rating} (${spot.distance_km} km)</div>`;
+        marker.addListener("click", () => {
+          infoWindow.setContent(popupHtml);
+          infoWindow.open(map, marker);
+        });
+        markers.push(marker);
+
+        const card = document.createElement("div");
+        card.className = "card";
+        card.innerHTML = `
+          <div class="card-top">
+            <div class="card-title">${spot.name}</div>
+            <div class="card-dist">${spot.distance_km} km</div>
+          </div>
+          <div class="card-addr">${spot.address}</div>
+          <div class="tags">
+            <span class="tag">${spot.is_free ? "Free" : "Paid"}</span>
+            ${spot.wheelchair ? '<span class="tag">♿ Accessible</span>' : ""}
+            ${spot.changing_table ? '<span class="tag">👶 Changing</span>' : ""}
+            ${spot.open_24h ? '<span class="tag">🕒 24/7</span>' : ""}
+            <span class="tag">⭐ ${spot.rating}</span>
+          </div>
+          <div class="card-actions">
+            <a href="https://www.google.com/maps/dir/?api=1&destination=${spot.lat},${spot.lon}" target="_blank" rel="noopener">Directions ↗</a>
+            <button onclick="event.stopPropagation(); rateSpot('${spot.id}', 5)">👍 Clean</button>
+          </div>
+        `;
+        card.onclick = () => {
+          map.panTo({ lat: spot.lat, lng: spot.lon });
+          map.setZoom(16);
+          infoWindow.setContent(popupHtml);
+          infoWindow.open(map, marker);
+        };
+        listEl.appendChild(card);
+      });
+    }
+
+    async function rateSpot(id, rating) {
+      await fetch(`/api/restrooms/${id}/rate`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rating })
+      });
+      loadRestrooms(currentLat, currentLon);
+    }
+
+    // Filter chips (instant client-side filtering)
+    document.querySelectorAll(".chip").forEach(chip => {
+      chip.onclick = () => {
+        const key = chip.dataset.filter;
+        activeFilters[key] = !activeFilters[key];
+        chip.classList.toggle("active", activeFilters[key]);
+        renderFiltered();
+      };
+    });
+
+    // GPS Locate
+    document.getElementById("locateBtn").onclick = () => {
+      if (!navigator.geolocation) return alert("Geolocation not supported.");
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          const { latitude, longitude } = pos.coords;
+          map.setCenter({ lat: latitude, lng: longitude });
+          map.setZoom(14);
+          loadRestrooms(latitude, longitude);
+        },
+        () => alert("Location permission denied.")
+      );
+    };
+
+    // Debounced Photon autocomplete
+    let debounceTimer;
+    const searchInput = document.getElementById("searchInput");
+    const suggBox = document.getElementById("suggestions");
+    searchInput.addEventListener("input", () => {
+      clearTimeout(debounceTimer);
+      const q = searchInput.value.trim();
+      if (q.length < 2) { suggBox.style.display = "none"; return; }
+      debounceTimer = setTimeout(async () => {
+        const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        if (!data.results.length) { suggBox.style.display = "none"; return; }
+        suggBox.innerHTML = data.results.map(r =>
+          `<div class="sugg-item" data-lat="${r.lat}" data-lon="${r.lon}">${r.label}</div>`
+        ).join("");
+        suggBox.style.display = "block";
+        suggBox.querySelectorAll(".sugg-item").forEach(el => {
+          el.onclick = () => {
+            const lat = parseFloat(el.dataset.lat), lon = parseFloat(el.dataset.lon);
+            searchInput.value = el.textContent;
+            suggBox.style.display = "none";
+            map.setCenter({ lat: lat, lng: lon });
+            map.setZoom(14);
+            loadRestrooms(lat, lon);
+          };
+        });
+      }, 250);
+    });
+
+    // Add Spot modal
+    const modal = document.getElementById("addModal");
+    document.getElementById("addBtn").onclick = () => modal.style.display = "flex";
+    document.getElementById("cancelModal").onclick = () => modal.style.display = "none";
+    document.getElementById("saveSpot").onclick = async () => {
+      const name = document.getElementById("newName").value.trim();
+      if (!name) return alert("Please enter a name.");
+      const center = map.getCenter();
+      await fetch("/api/restrooms", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          address: document.getElementById("newAddr").value.trim(),
+          lat: center.lat(), lon: center.lng(),
+          is_free: document.getElementById("newFree").checked,
+          wheelchair: document.getElementById("newWheelchair").checked,
+          changing_table: document.getElementById("newChanging").checked,
+          open_24h: document.getElementById("new24h").checked
+        })
+      });
+      modal.style.display = "none";
+      document.getElementById("newName").value = "";
+      document.getElementById("newAddr").value = "";
+      loadRestrooms(center.lat(), center.lng());
+    };
+  </script>
+  <script
+    src="https://maps.googleapis.com/maps/api/js?key={{ gmaps_key }}&callback=initMap"
+    async
+    defer>
+  </script>
+</body>
+</html>
